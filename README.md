@@ -1,4 +1,4 @@
-# 🦆 Decoy Cipher
+<h1><img src="public/icon.svg" width="40" height="40" alt="" align="absmiddle"> Decoy Cipher</h1>
 
 Hide a secret message inside a **readable story**. Type a message and a password, pick a theme (pirate's log, weather report, cooking blog…), and out comes ordinary-looking prose. Give the recipient the text, the theme and the password, and they can pull the original message back out.
 

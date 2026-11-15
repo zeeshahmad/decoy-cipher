@@ -7,13 +7,10 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
-main { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
+main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 48px; }
 h1 { margin: 0; font-size: 2rem; }
 h2 { margin: 0 0 8px; font-size: 1rem; color: var(--muted); font-weight: 600; }
 .tag { margin: 4px 0 20px; color: var(--muted); }
-.tabs { display: flex; gap: 8px; margin-bottom: 12px; }
-.tabs button { flex: 1; padding: 10px; border: 1px solid var(--line); background: transparent; color: var(--fg); border-radius: 10px; font: inherit; cursor: pointer; }
-.tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
 label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 12px; flex: 1; }
 input, select, textarea { display: block; width: 100%; margin-top: 4px; padding: 10px; font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
@@ -26,10 +23,16 @@ button.primary { background: var(--accent); color: var(--accent-fg); border-colo
 button:disabled { opacity: .5; cursor: progress; }
 label.inline { display: flex; align-items: center; gap: 6px; margin: 0 0 0 auto; flex: none; }
 label.inline input { width: auto; margin: 0; }
-#status { color: var(--muted); font-size: .9rem; }
-#status.err { color: #c0392b; }
 progress { width: 100%; margin-top: 12px; accent-color: var(--accent); }
 .output { white-space: pre-wrap; word-wrap: break-word; font-size: 1.05rem; padding: 12px; background: var(--bg); border-radius: 8px; margin-bottom: 12px; }
 .output span.t { border-radius: 3px; padding: 1px 0; }
 .hint, footer { color: var(--muted); font-size: .85rem; }
 footer a { color: inherit; }
+
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+@media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
+.panel h2 { font-size: 1.15rem; color: var(--fg); margin-bottom: 14px; }
+.panel h3 { margin: 16px 0 8px; font-size: .9rem; color: var(--muted); font-weight: 600; }
+.row > label { min-width: 0; }
+.status.err { color: #c0392b; }
+.status { color: var(--muted); font-size: .9rem; }

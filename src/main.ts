@@ -4,50 +4,152 @@ import { ENGINE_ID, loadTransformersLM } from "./core/lm-transformers";
 import { decode, encode, type Encoded } from "./core/stego";
 import { THEMES, themeById } from "./core/themes";
 
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const themeSel = $<HTMLSelectElement>("theme");
-const pw = $<HTMLInputElement>("password");
-const input = $<HTMLTextAreaElement>("input");
-const go = $<HTMLButtonElement>("go");
-const status = $("status");
-const bar = $<HTMLProgressElement>("bar");
-const result = $("result");
-const output = $("output");
-const how = $<HTMLInputElement>("how");
+type Mode = "enc" | "dec";
 
-let mode: "enc" | "dec" = "enc";
-let last: Encoded | null = null;
 let lmPromise: Promise<LM> | null = null;
+const panels: Panel[] = [];
 
-for (const t of THEMES) themeSel.add(new Option(`${t.emoji} ${t.name}`, t.id));
+/** One column: its own theme, password, input, progress and result. */
+class Panel {
+  root: HTMLElement;
+  theme: HTMLSelectElement;
+  pw: HTMLInputElement;
+  input: HTMLTextAreaElement;
+  go: HTMLButtonElement;
+  statusEl: HTMLElement;
+  bar: HTMLProgressElement;
+  result: HTMLElement;
+  output: HTMLElement;
+  how: HTMLInputElement | null;
+  howHint: HTMLElement | null;
+  last: Encoded | null = null;
 
-function say(msg: string, err = false) {
-  status.textContent = msg;
-  status.classList.toggle("err", err);
+  constructor(public mode: Mode) {
+    const q = <T extends Element>(s: string) => this.root.querySelector(s) as T;
+    this.root = document.getElementById(mode)!;
+    this.theme = q("select.theme");
+    this.pw = q("input.password");
+    this.input = q("textarea.input");
+    this.go = q("button.go");
+    this.statusEl = q(".status");
+    this.bar = q("progress.bar");
+    this.result = q(".result");
+    this.output = q(".output");
+    this.how = this.root.querySelector("input.how");
+    this.howHint = this.root.querySelector(".how-hint");
+
+    for (const t of THEMES) this.theme.add(new Option(`${t.emoji} ${t.name}`, t.id));
+    this.go.onclick = () => this.run();
+    q<HTMLButtonElement>("button.copy").onclick = async () => {
+      await navigator.clipboard.writeText(this.output.textContent ?? "");
+      this.say("Copied.");
+    };
+    const link = this.root.querySelector<HTMLButtonElement>("button.link");
+    if (link) link.onclick = () => this.copyLink();
+    if (this.how) this.how.onchange = () => this.last && this.render(this.last.full);
+  }
+
+  say(msg: string, err = false) {
+    this.statusEl.textContent = msg;
+    this.statusEl.classList.toggle("err", err);
+  }
+
+  private busy(b: boolean) {
+    for (const p of panels) p.go.disabled = b;
+    this.bar.hidden = !b;
+    if (b) this.bar.value = 0;
+  }
+
+  private show(text: string, enc?: Encoded) {
+    this.result.hidden = false;
+    this.last = enc ?? null;
+    this.render(text);
+  }
+
+  private render(text: string) {
+    const out = this.output;
+    out.textContent = "";
+    const heat = !!this.last && !!this.how?.checked;
+    if (this.howHint) this.howHint.hidden = !heat;
+    if (!heat || !this.last) {
+      out.textContent = text;
+      return;
+    }
+    const last = this.last;
+    const lead = document.createElement("span");
+    lead.className = "t";
+    lead.style.opacity = "0.55";
+    lead.title = "theme opening (not secret)";
+    lead.textContent = text.slice(0, text.length - last.text.length);
+    out.append(lead);
+    const max = Math.max(1, ...last.bitsPerToken);
+    last.tokenTexts.forEach((t, i) => {
+      const s = document.createElement("span");
+      s.className = "t";
+      s.textContent = t;
+      const b = last.bitsPerToken[i];
+      s.title = `${b} bit${b === 1 ? "" : "s"}`;
+      s.style.background = `rgba(var(--heat), ${(b / max) * 0.55})`;
+      out.append(s);
+    });
+  }
+
+  private async copyLink() {
+    // The fragment never leaves the browser. It carries theme + engine tag + text, not the password.
+    const u = new URL(location.href);
+    u.hash = new URLSearchParams({ t: this.theme.value, e: ENGINE_ID, x: this.last?.full ?? this.output.textContent ?? "" }).toString();
+    await navigator.clipboard.writeText(u.toString());
+    this.say("Link copied (the recipient still needs the password).");
+  }
+
+  private async run() {
+    if (!this.pw.value || !this.input.value.trim()) return this.say("Enter a password and some text first.", true);
+    this.result.hidden = true;
+    this.busy(true);
+    try {
+      const theme = themeById(this.theme.value);
+      this.say("Loading model (first time is a download)…");
+      const lm = await getLM(this);
+      this.say("Deriving key…");
+      const keys = await deriveKeys(this.pw.value, theme.id);
+      const onProgress = (d: number, t: number) => {
+        this.bar.value = d / t;
+        this.say(`${this.mode === "enc" ? "Writing" : "Reading"}… ${Math.round((d / t) * 100)}%`);
+      };
+      if (this.mode === "enc") {
+        const enc = await encode(lm, theme.prompt, this.input.value, keys, { onProgress });
+        this.show(enc.full, enc);
+        this.say(`${enc.tokens.length} tokens, ${new TextEncoder().encode(this.input.value).length} secret bytes.`);
+      } else {
+        const res = await decode(lm, theme.prompt, this.input.value, keys, { onProgress });
+        if (res.ok) {
+          this.show(res.message);
+          this.say("Revealed.");
+        } else {
+          this.say(
+            res.reason === "wrong-text"
+              ? "This text doesn't look like it was written with this theme (or by this model version)."
+              : "No message found. Wrong password, wrong theme, or the text was edited.",
+            true,
+          );
+        }
+      }
+    } catch (e) {
+      this.say(String((e as Error).message ?? e), true);
+    } finally {
+      this.busy(false);
+      this.bar.hidden = true;
+    }
+  }
 }
 
-function setMode(m: "enc" | "dec") {
-  mode = m;
-  $("tab-enc").setAttribute("aria-selected", String(m === "enc"));
-  $("tab-dec").setAttribute("aria-selected", String(m === "dec"));
-  $("in-label").firstChild!.textContent = m === "enc" ? "Secret message" : "Text to reveal";
-  input.placeholder = m === "enc" ? "Meet me at the old lighthouse at midnight." : "Paste the story here…";
-  input.maxLength = m === "enc" ? 500 : 20000;
-  input.rows = m === "enc" ? 4 : 8;
-  go.textContent = m === "enc" ? "Hide it" : "Reveal it";
-  result.hidden = true;
-  say("");
-}
-$("tab-enc").onclick = () => setMode("enc");
-$("tab-dec").onclick = () => setMode("dec");
-
-function getLM(): Promise<LM> {
+function getLM(who: Panel): Promise<LM> {
   lmPromise ??= loadTransformersLM((p) => {
     if (p.status === "progress" && p.total) {
-      bar.hidden = false;
-      bar.value = (p.loaded ?? 0) / p.total;
-      say(`Downloading language model… ${Math.round(((p.loaded ?? 0) / p.total) * 100)}%`);
-    } else if (p.status === "ready") say("Model ready.");
+      who.bar.hidden = false;
+      who.bar.value = (p.loaded ?? 0) / p.total;
+      who.say(`Downloading language model… ${Math.round(((p.loaded ?? 0) / p.total) * 100)}%`);
+    }
   }).catch((e) => {
     lmPromise = null;
     throw e;
@@ -55,102 +157,15 @@ function getLM(): Promise<LM> {
   return lmPromise;
 }
 
-function showOutput(text: string, enc?: Encoded) {
-  result.hidden = false;
-  $("result-title").textContent =
-    mode === "enc" ? `Your decoy text (theme: ${themeById(themeSel.value).name})` : "Revealed message";
-  last = enc ?? null;
-  $("how-wrap").hidden = $("how-hint").hidden = !enc || !how.checked;
-  $("how-wrap").hidden = !enc;
-  render(text);
-}
+const enc = new Panel("enc");
+const dec = new Panel("dec");
+panels.push(enc, dec);
 
-function render(text: string) {
-  output.textContent = "";
-  if (!last || !how.checked) {
-    output.textContent = text;
-    $("how-hint").hidden = true;
-    return;
-  }
-  $("how-hint").hidden = false;
-  const max = Math.max(1, ...last.bitsPerToken);
-  const lead = document.createElement("span");
-  lead.className = "t";
-  lead.style.opacity = "0.55";
-  lead.title = "theme opening (not secret)";
-  lead.textContent = text.slice(0, text.length - last.text.length);
-  output.append(lead);
-  last.tokenTexts.forEach((t, i) => {
-    const s = document.createElement("span");
-    s.className = "t";
-    s.textContent = t;
-    const b = last!.bitsPerToken[i];
-    s.title = `${b} bit${b === 1 ? "" : "s"}`;
-    s.style.background = `rgba(var(--heat), ${(b / max) * 0.55})`;
-    output.append(s);
-  });
-}
-how.onchange = () => last && render(last.full);
-
-go.onclick = async () => {
-  if (!pw.value || !input.value.trim()) return say("Enter a password and some text first.", true);
-  go.disabled = true;
-  result.hidden = true;
-  bar.hidden = false;
-  bar.value = 0;
-  try {
-    const theme = themeById(themeSel.value);
-    say("Loading model (first time is a download)…");
-    const lm = await getLM();
-    say("Deriving key…");
-    const keys = await deriveKeys(pw.value, theme.id);
-    const onProgress = (d: number, t: number) => {
-      bar.value = d / t;
-      say(`${mode === "enc" ? "Writing" : "Reading"}… ${Math.round((d / t) * 100)}%`);
-    };
-    if (mode === "enc") {
-      const enc = await encode(lm, theme.prompt, input.value, keys, { onProgress });
-      showOutput(enc.full, enc);
-      say(`${enc.tokens.length} tokens, ${new TextEncoder().encode(input.value).length} secret bytes.`);
-    } else {
-      const res = await decode(lm, theme.prompt, input.value, keys, { onProgress });
-      if (res.ok) {
-        showOutput(res.message);
-        say("Revealed.");
-      } else {
-        say(
-          res.reason === "wrong-text"
-            ? "This text doesn't look like it was written with this theme (or by this model version)."
-            : "No message found. Wrong password, wrong theme, or the text was edited.",
-          true,
-        );
-      }
-    }
-  } catch (e) {
-    say(String((e as Error).message ?? e), true);
-  } finally {
-    go.disabled = false;
-    bar.hidden = true;
-  }
-};
-
-$("copy").onclick = async () => {
-  await navigator.clipboard.writeText(output.textContent ?? "");
-  say("Copied.");
-};
-$("link").onclick = async () => {
-  // The fragment never leaves the browser. It carries theme + engine tag + text, not the password.
-  const u = new URL(location.href);
-  u.hash = new URLSearchParams({ m: "dec", t: themeSel.value, e: ENGINE_ID, x: last?.full ?? output.textContent ?? "" }).toString();
-  await navigator.clipboard.writeText(u.toString());
-  say("Link copied (the recipient still needs the password).");
-};
-
-// Open a shared link: pre-fill the decrypt tab.
+// Open a shared link: pre-fill the reveal column.
 const h = new URLSearchParams(location.hash.slice(1));
-if (h.get("m") === "dec") {
-  setMode("dec");
-  if (h.get("t")) themeSel.value = h.get("t")!;
-  input.value = h.get("x") ?? "";
-  if (h.get("e") && h.get("e") !== ENGINE_ID) say(`Warning: made with engine ${h.get("e")}, this app runs ${ENGINE_ID}.`, true);
+if (h.get("x")) {
+  if (h.get("t")) dec.theme.value = h.get("t")!;
+  dec.input.value = h.get("x")!;
+  if (h.get("e") && h.get("e") !== ENGINE_ID) dec.say(`Warning: made with engine ${h.get("e")}, this app runs ${ENGINE_ID}.`, true);
+  dec.root.scrollIntoView();
 }

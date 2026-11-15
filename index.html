@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Decoy Cipher</title>
+    <meta name="description" content="Hide secret messages inside readable, themed prose. A password in, a pirate's log out." />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦆</text></svg>" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>🦆 Decoy Cipher</h1>
+        <p class="tag">Your secret goes in. A perfectly innocent-looking story comes out.</p>
+      </header>
+
+      <nav class="tabs" role="tablist">
+        <button role="tab" id="tab-enc" aria-selected="true">Hide a message</button>
+        <button role="tab" id="tab-dec" aria-selected="false">Reveal a message</button>
+      </nav>
+
+      <section class="card">
+        <div class="row">
+          <label>Theme
+            <select id="theme"></select>
+          </label>
+          <label>Password
+            <input id="password" type="password" autocomplete="off" placeholder="the shared secret" />
+          </label>
+        </div>
+
+        <label id="in-label">Secret message
+          <textarea id="input" rows="4" maxlength="500" placeholder="Meet me at the old lighthouse at midnight."></textarea>
+        </label>
+
+        <div class="row actions">
+          <button id="go" class="primary">Hide it</button>
+          <span id="status" role="status"></span>
+        </div>
+        <progress id="bar" max="1" value="0" hidden></progress>
+      </section>
+
+      <section class="card" id="result" hidden>
+        <h2 id="result-title"></h2>
+        <div id="output" class="output"></div>
+        <div class="row actions">
+          <button id="copy">Copy text</button>
+          <button id="link">Copy link</button>
+          <label class="inline" id="how-wrap"><input type="checkbox" id="how" /> show me how</label>
+        </div>
+        <p class="hint" id="how-hint" hidden>Brighter words carried more secret bits. Dim words were nearly forced by the language model.</p>
+      </section>
+
+      <footer>
+        <p>
+          Both sides need the <b>same password</b> and the <b>same theme</b>. Everything runs in your browser;
+          nothing is uploaded. First use downloads a ~140&nbsp;MB open-source language model
+          (<a href="https://huggingface.co/HuggingFaceTB/SmolLM2-135M">SmolLM2</a>) and caches it.
+        </p>
+        <p>A toy, not vetted cryptography. <a href="https://github.com/zeeshahmad/decoy-cipher">Source &amp; how it works</a>.</p>
+      </footer>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
